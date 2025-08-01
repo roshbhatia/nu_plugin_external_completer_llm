@@ -1,24 +1,21 @@
 [package]
-
-{% if github_username != empty -%}
-
-{% endif -%}
-name = "{{ project-name }}"
+name = "nu_plugin_external_completer_llm"
 version = "0.1.0"
-authors = ["{{authors}}"]
+authors = ["Rosh Bhatia <rosh@roshbhatia.com>"]
 edition = "2021"
-description = "a nushell plugin called {{ plugin_name }}"
-repository = "https://github.com/{{ github_username }}/{{ project-name }}"
+description = "A Nushell plugin for AI-powered shell completions using LiteLLM"
+repository = "https://github.com/roshbhatia/nu_plugin_external_completer_llm"
 license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# for local development, you can use a path dependency
-# nu-plugin = { path = "../nushell/crates/nu-plugin" }
-# nu-protocol = { path = "../nushell/crates/nu-protocol", features = ["plugin"] }
 nu-plugin = "0.104.0"
 nu-protocol = { version = "0.104.0", features = ["plugin"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+dirs = "5.0"
 
 [dev-dependencies]
 # nu-plugin-test-support = { path = "../nushell/crates/nu-plugin-test-support" }
