@@ -179,6 +179,50 @@ llm-complete "npm run" --model "openrouter/google/gemma-2-9b-it:free"
 
 This plugin is built using the Nushell plugin template and follows Nushell plugin conventions.
 
+### Development Environment
+
+**With Nix** (recommended):
+```bash
+# Enter development shell
+nix-shell
+
+# Or with direnv (if you have it installed)
+direnv allow
+```
+
+**Without Nix**:
+```bash
+# Set up development environment
+make dev-setup
+
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+### Quick Commands
+
+```bash
+# Show all available commands
+make help
+
+# Build and test
+make build
+make test
+
+# Development workflow
+make watch          # Auto-rebuild on changes
+make watch-test     # Auto-test on changes
+make check          # Run all checks (format, lint, test)
+
+# Integration testing
+make dev-test       # Run integration tests (needs API key)
+
+# Plugin management
+make install        # Install to Nushell
+make uninstall      # Remove from Nushell
+```
+
 ### Running Tests
 
 **Unit Tests** (no API key required):

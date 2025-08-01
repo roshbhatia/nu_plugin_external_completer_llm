@@ -1,9 +1,11 @@
-use nu_plugin::{MsgPackSerializer, Plugin, PluginCommand, serve_plugin};
+use nu_plugin::{serve_plugin, MsgPackSerializer, Plugin, PluginCommand};
 use nu_plugin::{EngineInterface, EvaluatedCall};
-use nu_protocol::{Category, Example, LabeledError, PipelineData, Signature, SyntaxShape, Type, Value};
+use nu_protocol::{
+    Category, Example, LabeledError, PipelineData, Signature, SyntaxShape, Type, Value,
+};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 
 pub struct ExternalCompleterLlmPlugin;
 
@@ -57,15 +59,17 @@ fn get_api_key_for_provider(provider: &str, custom_env_var: Option<&str>) -> Opt
             return Some(key);
         }
     }
-    
+
     // Then check standard provider-specific env vars
     match provider.to_lowercase().as_str() {
         "openai" => std::env::var("OPENAI_API_KEY").ok(),
         "anthropic" => std::env::var("ANTHROPIC_API_KEY").ok(),
         "claude" => std::env::var("ANTHROPIC_API_KEY").ok(),
-        "google" => std::env::var("GOOGLE_API_KEY").ok()
+        "google" => std::env::var("GOOGLE_API_KEY")
+            .ok()
             .or_else(|| std::env::var("GEMINI_API_KEY").ok()),
-        "gemini" => std::env::var("GEMINI_API_KEY").ok()
+        "gemini" => std::env::var("GEMINI_API_KEY")
+            .ok()
             .or_else(|| std::env::var("GOOGLE_API_KEY").ok()),
         "azure" => std::env::var("AZURE_API_KEY").ok(),
         "cohere" => std::env::var("COHERE_API_KEY").ok(),
@@ -75,7 +79,8 @@ fn get_api_key_for_provider(provider: &str, custom_env_var: Option<&str>) -> Opt
         "openrouter" => std::env::var("OPENROUTER_API_KEY").ok(),
         _ => {
             // For unknown providers, try common variations
-            std::env::var(format!("{}_API_KEY", provider.to_uppercase())).ok()
+            std::env::var(format!("{}_API_KEY", provider.to_uppercase()))
+                .ok()
                 .or_else(|| std::env::var("OPENAI_API_KEY").ok()) // Fallback to OpenAI
         }
     }
@@ -92,12 +97,40 @@ impl PluginCommand for LlmCompleteCommand {
 
     fn signature(&self) -> Signature {
         Signature::build(self.name())
-            .required("partial_command", SyntaxShape::String, "The partial command to complete")
-            .optional("context", SyntaxShape::String, "Additional context about the current directory or task")
-            .named("model", SyntaxShape::String, "AI model to use in provider/model format (default: openai/gpt-3.5-turbo)", Some('m'))
-            .named("max-tokens", SyntaxShape::Int, "Maximum tokens for completion (default: 150)", Some('t'))
-            .named("temperature", SyntaxShape::Number, "Temperature for AI response (default: 0.3)", Some('T'))
-            .named("api-key-from-env", SyntaxShape::String, "Environment variable name to read API key from", Some('k'))
+            .required(
+                "partial_command",
+                SyntaxShape::String,
+                "The partial command to complete",
+            )
+            .optional(
+                "context",
+                SyntaxShape::String,
+                "Additional context about the current directory or task",
+            )
+            .named(
+                "model",
+                SyntaxShape::String,
+                "AI model to use in provider/model format (default: openai/gpt-3.5-turbo)",
+                Some('m'),
+            )
+            .named(
+                "max-tokens",
+                SyntaxShape::Int,
+                "Maximum tokens for completion (default: 150)",
+                Some('t'),
+            )
+            .named(
+                "temperature",
+                SyntaxShape::Number,
+                "Temperature for AI response (default: 0.3)",
+                Some('T'),
+            )
+            .named(
+                "api-key-from-env",
+                SyntaxShape::String,
+                "Environment variable name to read API key from",
+                Some('k'),
+            )
             .switch("debug", "Show debug information", Some('d'))
             .input_output_type(Type::Nothing, Type::List(Type::String.into()))
             .category(Category::Experimental)
@@ -155,26 +188,29 @@ impl PluginCommand for LlmCompleteCommand {
         let partial_command: String = call.req(0)?;
         let context: Option<String> = call.opt(1)?;
         let debug = call.has_flag("debug")?;
-        let custom_api_key_env = call.get_flag::<Value>("api-key-from-env")?
+        let custom_api_key_env = call
+            .get_flag::<Value>("api-key-from-env")?
             .map(|v| v.as_str().unwrap_or("").to_string())
             .filter(|s| !s.is_empty());
 
         let mut config = load_config();
-        
+
         // Override with command-line parameters
         if let Some(model_value) = call.get_flag::<Value>("model")? {
             config.model = model_value.as_str().unwrap_or(&config.model).to_string();
         }
         if let Some(max_tokens_value) = call.get_flag::<Value>("max-tokens")? {
-            config.max_tokens = max_tokens_value.as_int().unwrap_or(config.max_tokens as i64) as u32;
+            config.max_tokens = max_tokens_value
+                .as_int()
+                .unwrap_or(config.max_tokens as i64) as u32;
         }
         if let Some(temp_value) = call.get_flag::<Value>("temperature")? {
             config.temperature = temp_value.as_float().unwrap_or(config.temperature as f64) as f32;
         }
-        
+
         // Parse provider and model from the model string
         let (provider, _) = parse_model_string(&config.model);
-        
+
         // Get API key for the specific provider
         config.api_key = get_api_key_for_provider(&provider, custom_api_key_env.as_deref());
 
@@ -184,10 +220,13 @@ impl PluginCommand for LlmCompleteCommand {
                     .into_iter()
                     .map(|completion| Value::string(completion, call.head))
                     .collect();
-                
+
                 Ok(PipelineData::Value(Value::list(values, call.head), None))
             }
-            Err(e) => Err(LabeledError::new(format!("Failed to generate completions: {}", e)).with_label("completion error", call.head)),
+            Err(e) => Err(
+                LabeledError::new(format!("Failed to generate completions: {}", e))
+                    .with_label("completion error", call.head),
+            ),
         }
     }
 }
@@ -198,11 +237,15 @@ fn generate_completions(
     config: &LlmConfig,
     debug: bool,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let api_key = config.api_key.as_ref()
+    let api_key = config
+        .api_key
+        .as_ref()
         .ok_or("No API key found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY")?;
 
-    let context_text = context.map(|c| format!(" Context: {}", c)).unwrap_or_default();
-    
+    let context_text = context
+        .map(|c| format!(" Context: {}", c))
+        .unwrap_or_default();
+
     let prompt = format!(
         "You are a shell command completion assistant. Given a partial command, suggest 3-5 most likely completions.
         
@@ -224,7 +267,7 @@ Rules:
 
     // Parse the provider from the model string for proper API key handling
     let (provider, _) = parse_model_string(&config.model);
-    
+
     let python_script = format!(
         r#"
 import litellm
@@ -295,7 +338,10 @@ except Exception as e:
         api_key,
         config.model,
         provider,
-        prompt.replace('\'', "\\'").replace('\n', "\\n").replace('"', "\\\""),
+        prompt
+            .replace('\'', "\\'")
+            .replace('\n', "\\n")
+            .replace('"', "\\\""),
         config.max_tokens,
         config.temperature,
         if debug { "True" } else { "False" }
@@ -343,7 +389,7 @@ fn get_config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
         .ok_or("Could not find config directory")?
         .join("nushell")
         .join("plugins");
-    
+
     std::fs::create_dir_all(&config_dir)?;
     Ok(config_dir.join("external_completer_llm.json"))
 }
@@ -384,10 +430,23 @@ impl PluginCommand for ExternalCompleterCommand {
         Signature::build(self.name())
             .required("line", SyntaxShape::String, "The current command line")
             .required("position", SyntaxShape::Int, "Cursor position in the line")
-            .named("model", SyntaxShape::String, "AI model to use in provider/model format", Some('m'))
-            .named("api-key-from-env", SyntaxShape::String, "Environment variable name to read API key from", Some('k'))
+            .named(
+                "model",
+                SyntaxShape::String,
+                "AI model to use in provider/model format",
+                Some('m'),
+            )
+            .named(
+                "api-key-from-env",
+                SyntaxShape::String,
+                "Environment variable name to read API key from",
+                Some('k'),
+            )
             .switch("debug", "Show debug information", Some('d'))
-            .input_output_type(Type::Nothing, Type::List(Box::new(Type::Record(vec![].into()))))
+            .input_output_type(
+                Type::Nothing,
+                Type::List(Box::new(Type::Record(vec![].into()))),
+            )
             .category(Category::Experimental)
     }
 
@@ -396,13 +455,11 @@ impl PluginCommand for ExternalCompleterCommand {
     }
 
     fn examples(&self) -> Vec<Example> {
-        vec![
-            Example {
-                example: "external-completer \"git comm\" 8",
-                description: "Complete command at cursor position",
-                result: None, // External completer results vary
-            },
-        ]
+        vec![Example {
+            example: "external-completer \"git comm\" 8",
+            description: "Complete command at cursor position",
+            result: None, // External completer results vary
+        }]
     }
 
     fn run(
@@ -414,9 +471,12 @@ impl PluginCommand for ExternalCompleterCommand {
     ) -> Result<PipelineData, LabeledError> {
         let line: String = call.req(0)?;
         let position: i64 = call.req(1)?;
-        let model = call.get_flag::<Value>("model")?.map(|v| v.as_str().unwrap_or("openai/gpt-3.5-turbo").to_string());
+        let model = call
+            .get_flag::<Value>("model")?
+            .map(|v| v.as_str().unwrap_or("openai/gpt-3.5-turbo").to_string());
         let debug = call.has_flag("debug")?;
-        let custom_api_key_env = call.get_flag::<Value>("api-key-from-env")?
+        let custom_api_key_env = call
+            .get_flag::<Value>("api-key-from-env")?
             .map(|v| v.as_str().unwrap_or("").to_string())
             .filter(|s| !s.is_empty());
 
@@ -439,19 +499,19 @@ impl PluginCommand for ExternalCompleterCommand {
         };
 
         let mut config = load_config();
-        
+
         // Override with command-line parameters
         if let Some(model_value) = model {
             config.model = model_value;
         }
-        
+
         // External completer specific settings
         config.max_tokens = 50; // Shorter for external completer
         config.temperature = 0.1; // More deterministic for completions
-        
+
         // Parse provider and model from the model string
         let (provider, _) = parse_model_string(&config.model);
-        
+
         // Get API key for the specific provider
         config.api_key = get_api_key_for_provider(&provider, custom_api_key_env.as_deref());
 
@@ -463,10 +523,21 @@ impl PluginCommand for ExternalCompleterCommand {
                         // Create record with value and description for external completer
                         Value::record(
                             vec![
-                                ("value".to_string(), Value::string(completion.clone(), call.head)),
-                                ("description".to_string(), Value::string(format!("AI suggestion: {}", completion), call.head)),
-                            ].into_iter().collect(),
-                            call.head
+                                (
+                                    "value".to_string(),
+                                    Value::string(completion.clone(), call.head),
+                                ),
+                                (
+                                    "description".to_string(),
+                                    Value::string(
+                                        format!("AI suggestion: {}", completion),
+                                        call.head,
+                                    ),
+                                ),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            call.head,
                         )
                     })
                     .collect();
@@ -496,9 +567,24 @@ impl PluginCommand for LlmConfigCommand {
     fn signature(&self) -> Signature {
         Signature::build(self.name())
             .optional("action", SyntaxShape::String, "Action: show, set, or reset")
-            .named("model", SyntaxShape::String, "Set the default AI model in provider/model format (e.g., openai/gpt-4)", Some('m'))
-            .named("max-tokens", SyntaxShape::Int, "Set maximum tokens", Some('t'))
-            .named("temperature", SyntaxShape::Number, "Set temperature", Some('T'))
+            .named(
+                "model",
+                SyntaxShape::String,
+                "Set the default AI model in provider/model format (e.g., openai/gpt-4)",
+                Some('m'),
+            )
+            .named(
+                "max-tokens",
+                SyntaxShape::Int,
+                "Set maximum tokens",
+                Some('t'),
+            )
+            .named(
+                "temperature",
+                SyntaxShape::Number,
+                "Set temperature",
+                Some('T'),
+            )
             .input_output_type(Type::Nothing, Type::Record(vec![].into()))
             .category(Category::Experimental)
     }
@@ -543,57 +629,75 @@ impl PluginCommand for LlmConfigCommand {
                 let result = Value::record(
                     vec![
                         ("model".to_string(), Value::string(config.model, call.head)),
-                        ("max_tokens".to_string(), Value::int(config.max_tokens as i64, call.head)),
-                        ("temperature".to_string(), Value::float(config.temperature as f64, call.head)),
-                        ("api_key_set".to_string(), Value::bool(config.api_key.is_some(), call.head)),
-                        ("config_path".to_string(), 
-                         Value::string(
-                             get_config_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "error".to_string()),
-                             call.head
-                         )),
-                    ].into_iter().collect(),
-                    call.head
+                        (
+                            "max_tokens".to_string(),
+                            Value::int(config.max_tokens as i64, call.head),
+                        ),
+                        (
+                            "temperature".to_string(),
+                            Value::float(config.temperature as f64, call.head),
+                        ),
+                        (
+                            "api_key_set".to_string(),
+                            Value::bool(config.api_key.is_some(), call.head),
+                        ),
+                        (
+                            "config_path".to_string(),
+                            Value::string(
+                                get_config_path()
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_else(|_| "error".to_string()),
+                                call.head,
+                            ),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                    call.head,
                 );
                 Ok(PipelineData::Value(result, None))
             }
             "set" => {
                 let mut config = load_config();
-                
+
                 if let Some(model) = call.get_flag::<Value>("model")? {
                     config.model = model.as_str().unwrap_or(&config.model).to_string();
                 }
-                
+
                 if let Some(max_tokens) = call.get_flag::<Value>("max-tokens")? {
-                    config.max_tokens = max_tokens.as_int().unwrap_or(config.max_tokens as i64) as u32;
+                    config.max_tokens =
+                        max_tokens.as_int().unwrap_or(config.max_tokens as i64) as u32;
                 }
-                
+
                 if let Some(temperature) = call.get_flag::<Value>("temperature")? {
-                    config.temperature = temperature.as_float().unwrap_or(config.temperature as f64) as f32;
+                    config.temperature =
+                        temperature.as_float().unwrap_or(config.temperature as f64) as f32;
                 }
 
                 match save_config(&config) {
-                    Ok(_) => {
-                        Ok(PipelineData::Value(
-                            Value::string("Configuration updated successfully", call.head),
-                            None
-                        ))
-                    }
-                    Err(e) => Err(LabeledError::new(format!("Failed to save config: {}", e)).with_label("config error", call.head)),
+                    Ok(_) => Ok(PipelineData::Value(
+                        Value::string("Configuration updated successfully", call.head),
+                        None,
+                    )),
+                    Err(e) => Err(LabeledError::new(format!("Failed to save config: {}", e))
+                        .with_label("config error", call.head)),
                 }
             }
             "reset" => {
                 let config = LlmConfig::default();
                 match save_config(&config) {
-                    Ok(_) => {
-                        Ok(PipelineData::Value(
-                            Value::string("Configuration reset to defaults", call.head),
-                            None
-                        ))
-                    }
-                    Err(e) => Err(LabeledError::new(format!("Failed to reset config: {}", e)).with_label("config error", call.head)),
+                    Ok(_) => Ok(PipelineData::Value(
+                        Value::string("Configuration reset to defaults", call.head),
+                        None,
+                    )),
+                    Err(e) => Err(LabeledError::new(format!("Failed to reset config: {}", e))
+                        .with_label("config error", call.head)),
                 }
             }
-            _ => Err(LabeledError::new("Invalid action. Use: show, set, or reset").with_label("invalid action", call.head)),
+            _ => Err(
+                LabeledError::new("Invalid action. Use: show, set, or reset")
+                    .with_label("invalid action", call.head),
+            ),
         }
     }
 }
@@ -621,13 +725,11 @@ mod tests {
     fn test_basic_plugin_setup() {
         let plugin = ExternalCompleterLlmPlugin;
         let commands = plugin.commands();
-        
+
         assert_eq!(commands.len(), 3);
-        
-        let command_names: Vec<&str> = commands.iter()
-            .map(|cmd| cmd.name())
-            .collect();
-        
+
+        let command_names: Vec<&str> = commands.iter().map(|cmd| cmd.name()).collect();
+
         assert!(command_names.contains(&"llm-complete"));
         assert!(command_names.contains(&"external-completer"));
         assert!(command_names.contains(&"llm-config"));
@@ -657,12 +759,12 @@ mod tests {
         env::set_var("OPENROUTER_API_KEY", "test-key-123");
         let key = get_api_key_for_provider("openrouter", None);
         assert_eq!(key, Some("test-key-123".to_string()));
-        
+
         // Test custom env var
         env::set_var("MY_CUSTOM_KEY", "custom-key-456");
         let key = get_api_key_for_provider("openrouter", Some("MY_CUSTOM_KEY"));
         assert_eq!(key, Some("custom-key-456".to_string()));
-        
+
         // Clean up
         env::remove_var("OPENROUTER_API_KEY");
         env::remove_var("MY_CUSTOM_KEY");
@@ -672,17 +774,17 @@ mod tests {
     fn test_config_management() {
         let temp_dir = tempdir().unwrap();
         let _config_path = temp_dir.path().join("test_config.json");
-        
+
         // Test default config
         let default_config = LlmConfig::default();
         assert_eq!(default_config.model, "openai/gpt-3.5-turbo");
         assert_eq!(default_config.max_tokens, 150);
         assert_eq!(default_config.temperature, 0.3);
-        
+
         // Test config serialization
         let config_json = serde_json::to_string(&default_config).unwrap();
         assert!(config_json.contains("openai/gpt-3.5-turbo"));
-        
+
         // Test config deserialization
         let parsed_config: LlmConfig = serde_json::from_str(&config_json).unwrap();
         assert_eq!(parsed_config.model, default_config.model);
@@ -693,9 +795,11 @@ mod tests {
         if !setup_test_env() {
             return;
         }
-        
+
         // Test the plugin command examples
-        if let Ok(mut plugin_test) = PluginTest::new("external_completer_llm", ExternalCompleterLlmPlugin.into()) {
+        if let Ok(mut plugin_test) =
+            PluginTest::new("external_completer_llm", ExternalCompleterLlmPlugin.into())
+        {
             let _ = plugin_test.test_command_examples(&LlmCompleteCommand);
         }
 
@@ -708,7 +812,8 @@ mod tests {
         };
 
         if let Ok(_completions) = generate_completions("git comm", None, &config, false) {
-            assert!(!completions.is_empty() || true); // Allow empty results due to network issues
+            // Test passes if we get any result without error
+            assert!(true);
         }
     }
 
@@ -725,7 +830,12 @@ mod tests {
             temperature: 0.1,
         };
 
-        if let Ok(_completions) = generate_completions("docker run", Some("setting up a web server"), &config, false) {
+        if let Ok(_completions) = generate_completions(
+            "docker run",
+            Some("setting up a web server"),
+            &config,
+            false,
+        ) {
             // Test passes if we get any result without error, even empty
             // Test passes if we get any result without error
             assert!(true);
@@ -755,7 +865,7 @@ mod tests {
             // Test passes if we get any result without error
             assert!(true);
         }
-        
+
         env::remove_var("TEST_CUSTOM_OPENROUTER_KEY");
     }
 
@@ -766,7 +876,9 @@ mod tests {
         }
 
         // Test external completer command validation
-        if let Ok(mut plugin_test) = PluginTest::new("external_completer_llm", ExternalCompleterLlmPlugin.into()) {
+        if let Ok(mut plugin_test) =
+            PluginTest::new("external_completer_llm", ExternalCompleterLlmPlugin.into())
+        {
             let _ = plugin_test.test_command_examples(&ExternalCompleterCommand);
         }
 
@@ -778,7 +890,7 @@ mod tests {
         } else {
             &line
         };
-        
+
         assert_eq!(partial_command, "git status");
 
         // Test completion with shorter parameters for external completer
@@ -789,7 +901,12 @@ mod tests {
             temperature: 0.1,
         };
 
-        if let Ok(_completions) = generate_completions(partial_command, Some("Current directory: /home/user"), &config, false) {
+        if let Ok(_completions) = generate_completions(
+            partial_command,
+            Some("Current directory: /home/user"),
+            &config,
+            false,
+        ) {
             // Test passes if we get any result without error
             assert!(true);
         }
@@ -798,34 +915,37 @@ mod tests {
     #[test]
     fn test_llm_config_commands() {
         // Test config command validation
-        if let Ok(mut plugin_test) = PluginTest::new("external_completer_llm", ExternalCompleterLlmPlugin.into()) {
+        if let Ok(mut plugin_test) =
+            PluginTest::new("external_completer_llm", ExternalCompleterLlmPlugin.into())
+        {
             let _ = plugin_test.test_command_examples(&LlmConfigCommand);
         }
 
         // Test config functions directly
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("test_config.json");
-        
+
         // Test default config creation
         let default_config = LlmConfig::default();
         let config_json = serde_json::to_string_pretty(&default_config).unwrap();
         std::fs::write(&config_path, &config_json).unwrap();
-        
+
         // Test config loading
         let loaded_content = std::fs::read_to_string(&config_path).unwrap();
         let loaded_config: LlmConfig = serde_json::from_str(&loaded_content).unwrap();
         assert_eq!(loaded_config.model, default_config.model);
         assert_eq!(loaded_config.max_tokens, default_config.max_tokens);
-        
+
         // Test config modification
         let mut modified_config = loaded_config;
         modified_config.model = TEST_MODEL.to_string();
         modified_config.temperature = 0.2;
-        
+
         let modified_json = serde_json::to_string_pretty(&modified_config).unwrap();
         std::fs::write(&config_path, &modified_json).unwrap();
-        
-        let reloaded_config: LlmConfig = serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+
+        let reloaded_config: LlmConfig =
+            serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
         assert_eq!(reloaded_config.model, TEST_MODEL);
         assert_eq!(reloaded_config.temperature, 0.2);
     }
@@ -840,7 +960,7 @@ mod tests {
         };
 
         let result = generate_completions("test command", None, &config, false);
-        
+
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("API key") || error_msg.contains("api key"));
@@ -849,7 +969,8 @@ mod tests {
     #[test]
     fn test_provider_parsing_edge_cases() {
         // Test complex model names
-        let (provider, model) = parse_model_string("openrouter/meta-llama/llama-3.1-8b-instruct:free");
+        let (provider, model) =
+            parse_model_string("openrouter/meta-llama/llama-3.1-8b-instruct:free");
         assert_eq!(provider, "openrouter");
         assert_eq!(model, "meta-llama/llama-3.1-8b-instruct:free");
 
